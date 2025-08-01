@@ -11,23 +11,21 @@ enum class TokenType {
     OUTPUT,     // .
     INPUT,      // ,
     LOOP_START, // [
-    LOOP_END    // ]
+    LOOP_END,   // ]
+    WHITESPACE, // spaces
+    COMMENT     // everything else
 };
 
 struct Token {
     TokenType type;
-    size_t position; // Position in source
-    size_t line;     // Line number
-    size_t column;   // Column number
+    bool isValid;     // if the token is a valid BF command
+    size_t position;  // Position in source
+    size_t line;      // Line number
+    size_t column;    // Column number
+    std::string text; // The actual text content
 };
 
 class BrainfuckLexer {
-  private:
-    std::string source;
-    std::vector<Token> tokens;
-
   public:
-    void tokenize(const std::string &input);
-    const std::vector<Token> &getTokens() const;
-    void printTokens() const;
+    std::vector<Token> tokenize(const std::string &input);
 };

@@ -24,26 +24,23 @@ int main(int argc, char *argv[]) {
 
     try {
         std::string filename = argv[1];
-        std::string code = readFile(filename);
+        std::string source = readFile(filename);
 
         BrainfuckLexer lexer;
-        lexer.tokenize(code);
+        std::vector<Token> tokens = lexer.tokenize(source);
 
         std::cout << "Reading file: " << filename << std::endl
-                  << "File size: " << code.length() << " characters" << std::endl
-                  << "Tokenized " << lexer.getTokens().size() << " tokens" << std::endl
+                  << "File size: " << source.length() << " characters" << std::endl
+                  << "Tokenized " << tokens.size() << " tokens" << std::endl
                   << std::endl;
 
         // Parse to AST
         BrainfuckParser parser;
-        auto ast = parser.parse(lexer.getTokens());
+        auto ast = parser.parse(tokens);
 
-        // Check for parse errors and warnings
+        parser.printAST(ast.get());
         parser.printErrors();
         parser.printWarnings();
-
-        // std::cout << "AST:" << std::endl;
-        // parser.printAST(ast.get());
     } catch (const std::exception &e) {
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;

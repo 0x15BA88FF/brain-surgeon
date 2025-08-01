@@ -1,74 +1,92 @@
 #include "lexer.hpp"
-#include <iostream>
 
-void BrainfuckLexer::tokenize(const std::string &input) {
-    source = input;
-    tokens.clear();
-
+std::vector<Token> BrainfuckLexer::tokenize(const std::string &input) {
+    std::vector<Token> tokens;
+    size_t i = 0;
     size_t line = 1;
     size_t column = 1;
 
-    for (size_t i = 0; i < input.length(); i++) {
-        char c = input[i];
-
-        // Only parse valid brainfuck commands
+    while (i < input.length()) {
         TokenType type;
-        bool validToken = true;
+        std::string text;
+        char c = input[i];
+        bool isValid = true;
+        size_t startPos = i;
+        size_t startColumn = column;
 
         switch (c) {
         case '>':
             type = TokenType::MOVE_RIGHT;
+            text = ">";
             break;
         case '<':
             type = TokenType::MOVE_LEFT;
+            text = "<";
             break;
         case '+':
             type = TokenType::INCREMENT;
+            text = "+";
             break;
         case '-':
             type = TokenType::DECREMENT;
+            text = "-";
             break;
         case '.':
             type = TokenType::OUTPUT;
+            text = ".";
             break;
         case ',':
             type = TokenType::INPUT;
+            text = ",";
             break;
         case '[':
             type = TokenType::LOOP_START;
+            text = "[";
             break;
         case ']':
             type = TokenType::LOOP_END;
+            text = "]";
             break;
-        default:
-            validToken = false;
+        case ' ':
+            type = TokenType::WHITESPACE;
+            text = " ";
+            isValid = false;
             break;
-        }
-
-        if (validToken) {
-            tokens.push_back({type, i, line, column});
-        }
-
-        // Track line/column for error reporting
-        if (c == '\n') {
+        case '\n':
             line++;
             column = 1;
-        } else {
-            column++;
+            i++;
+            continue;
+        default: {
+            type = TokenType::COMMENT;
+            isValid = false;
+
+            size_t commentStart = i;
+            size_t commentCol = column;
+
+            while (i < input.length()) {
+                char ch = input[i];
+
+                if (ch == ' ' || ch == '\n' || ch == '>' || ch == '<' || ch == '+' || ch == '-' ||
+                    ch == '.' || ch == ',' || ch == '[' || ch == ']') {
+                    break;
+                }
+
+                i++;
+                column++;
+            }
+
+            text = input.substr(commentStart, i - commentStart);
+            tokens.push_back({type, isValid, commentStart, line, commentCol, text});
+
+            continue;
         }
-    }
-}
+        }
 
-const std::vector<Token> &BrainfuckLexer::getTokens() const {
+        tokens.push_back({type, isValid, startPos, line, startColumn, text});
+        i++;
+        column++;
+    }
+
     return tokens;
-}
-
-void BrainfuckLexer::printTokens() const {
-    const char *typeNames[] = {"MOVE_RIGHT", "MOVE_LEFT", "INCREMENT",  "DECREMENT",
-                               "OUTPUT",     "INPUT",     "LOOP_START", "LOOP_END"};
-
-    for (const auto &token : tokens) {
-        std::cout << typeNames[static_cast<int>(token.type)] << " at " << token.line << ":"
-                  << token.column << std::endl;
-    }
 }

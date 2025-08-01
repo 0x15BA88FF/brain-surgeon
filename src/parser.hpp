@@ -5,7 +5,7 @@
 #include <vector>
 
 // AST Node types
-enum class NodeType { PROGRAM, COMMAND, LOOP };
+enum class NodeType { PROGRAM, COMMAND, LOOP, WHITESPACE, COMMENT };
 
 // Base AST Node
 class ASTNode {
@@ -16,6 +16,14 @@ class ASTNode {
 
     ASTNode(NodeType t, size_t l = 0, size_t c = 0) : type(t), line(l), column(c) {}
     virtual ~ASTNode() = default;
+};
+
+// Program node (root of the AST)
+class ProgramNode : public ASTNode {
+  public:
+    std::vector<std::unique_ptr<ASTNode>> statements;
+
+    ProgramNode() : ASTNode(NodeType::PROGRAM) {}
 };
 
 // Command node (single brainfuck instruction)
@@ -35,12 +43,21 @@ class LoopNode : public ASTNode {
     LoopNode(size_t l = 0, size_t c = 0) : ASTNode(NodeType::LOOP, l, c) {}
 };
 
-// Program node (root of the AST)
-class ProgramNode : public ASTNode {
+class WhitespaceNode : public ASTNode {
   public:
-    std::vector<std::unique_ptr<ASTNode>> statements;
+    std::string text;
 
-    ProgramNode() : ASTNode(NodeType::PROGRAM) {}
+    WhitespaceNode(const std::string &t, size_t l = 0, size_t c = 0)
+        : ASTNode(NodeType::WHITESPACE, l, c), text(t) {}
+};
+
+// Comment node
+class CommentNode : public ASTNode {
+  public:
+    std::string text;
+
+    CommentNode(const std::string &t, size_t l = 0, size_t c = 0)
+        : ASTNode(NodeType::COMMENT, l, c), text(t) {}
 };
 
 struct ParseWarning {
@@ -64,7 +81,7 @@ class BrainfuckParser {
     std::vector<Token> tokens;
     size_t current;
 
-    std::unique_ptr<ASTNode> parseStatement();
+    std::unique_ptr<ASTNode> parseStatement(Token *&prevValidToken, size_t &prevValidIndex);
     std::unique_ptr<LoopNode> parseLoop();
 
   public:
