@@ -1,36 +1,69 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
-const vscode = require('vscode');
+const vscode = require("vscode");
+const { exec } = require("child_process");
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
+const runLint = (document, collection) => {
+    if (document.languageId !== "brainfuck") return;
 
-/**
- * @param {vscode.ExtensionContext} context
- */
-function activate(context) {
+    exec(`/home/null/Dev/hosts/github.com/0x15ba88ff/brain-surgery/build/brain-surgeon lint ${document.uri.fsPath}`, (err, stdout, stderr) => {
+        console.log("Brain Surgeon linting");
 
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "brain-surgeon" is now active!');
+        const diagnostics = [];
+        let lintResults = [];
 
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with  registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('brain-surgeon.helloWorld', function () {
-		// The code you place here will be executed every time your command is executed
+        try {
+            lintResults = JSON.parse(stdout);
+        } catch (e) {
+            vscode.window.showErrorMessage("Brain Surgeon linting failed: Invalid JSON output.");
+            return;
+        }
 
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from brain-surgeon!');
-	});
+        for (const item of lintResults) {
+            const range = new vscode.Range(
+                new vscode.Position(item.startLine - 1, item.startColumn - 1),
+                new vscode.Position(item.endLine - 1, item.endColumn)
+            );
 
-	context.subscriptions.push(disposable);
-}
+            const diagnostic = new vscode.Diagnostic(
+                range,
+                item.message,
+                {
+                    "info": vscode.DiagnosticSeverity.Information,
+                    "warning": vscode.DiagnosticSeverity.Warning,
+                    "error": vscode.DiagnosticSeverity.Error,
+                    "hint": vscode.DiagnosticSeverity.Hint,
+                }[item.level.toLowerCase()]
+            );
 
-// This method is called when your extension is deactivated
-function deactivate() {}
+            diagnostics.push(diagnostic);
+        }
+
+        collection.set(document.uri, diagnostics);
+        console.log("Brain Surgeon linted");
+    });
+};
+
+const runFormat = (document) => {
+    if (document.languageId !== "brainfuck") return;
+
+    exec(`/home/null/Dev/hosts/github.com/0x15ba88ff/brain-surgery/build/brain-surgeon fmt ${document.uri.fsPath}`, (_err, stdout, _stderr) => {
+        vscode.window.showInformationMessage(stdout);
+    });
+};
+
+const activate = (context) => {
+    const diagnosticCollection = vscode.languages.createDiagnosticCollection("brain-surgeon");
+
+    vscode.workspace.onDidSaveTextDocument(doc => runLint(doc, diagnosticCollection));
+    vscode.workspace.onDidSaveTextDocument(doc => runFormat(doc));
+
+    context.subscriptions.push(diagnosticCollection);
+
+    vscode.window.showInformationMessage("Brain Surgeon is active!");
+};
+
+const deactivate = () => { };
 
 module.exports = {
-	activate,
-	deactivate
-}
+    activate,
+    deactivate
+};

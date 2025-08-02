@@ -1,0 +1,38 @@
+{
+    "name": "Brainfuck Theme",
+    "type": "dark",
+    "tokenColors": [
+        {
+            "scope": "keyword.operator.pointer.brainfuck",
+            "settings": {
+                "foreground": "#FF9E64",
+                "fontStyle": "bold"
+            }
+        },
+        {
+            "scope": "keyword.operator.arithmetic.brainfuck",
+            "settings": {
+                "foreground": "#D4BFFF"
+            }
+        },
+        {
+            "scope": "keyword.control.loop.brainfuck",
+            "settings": {
+                "foreground": "#FFC66D"
+            }
+        },
+        {
+            "scope": "keyword.operator.io.brainfuck",
+            "settings": {
+                "foreground": "#72F1B8"
+            }
+        },
+        {
+            "scope": "comment.ignored.brainfuck",
+            "settings": {
+                "foreground": "#565F89",
+                "fontStyle": "italic"
+            }
+        }
+    ]
+}

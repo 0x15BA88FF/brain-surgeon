@@ -1,91 +1,72 @@
 #include "lexer.hpp"
+#include <string.h>
 
-std::vector<Token> BrainfuckLexer::tokenize(const std::string &input) {
+std::vector<Token> BrainfuckLexer::tokenize(const std::string& input) {
+    size_t index = 0;
+    size_t start_line = 1;
+    size_t start_column = 1;
     std::vector<Token> tokens;
-    size_t i = 0;
-    size_t line = 1;
-    size_t column = 1;
 
-    while (i < input.length()) {
+    while (index < input.length()) {
         TokenType type;
         std::string text;
-        char c = input[i];
-        bool isValid = true;
-        size_t startPos = i;
-        size_t startColumn = column;
+        bool is_valid = true;
+        size_t end_line = start_line;
+        size_t end_column = start_line;
 
-        switch (c) {
-        case '>':
-            type = TokenType::MOVE_RIGHT;
-            text = ">";
-            break;
-        case '<':
-            type = TokenType::MOVE_LEFT;
-            text = "<";
-            break;
-        case '+':
-            type = TokenType::INCREMENT;
-            text = "+";
-            break;
-        case '-':
-            type = TokenType::DECREMENT;
-            text = "-";
-            break;
-        case '.':
-            type = TokenType::OUTPUT;
-            text = ".";
-            break;
-        case ',':
-            type = TokenType::INPUT;
-            text = ",";
-            break;
-        case '[':
-            type = TokenType::LOOP_START;
-            text = "[";
-            break;
-        case ']':
-            type = TokenType::LOOP_END;
-            text = "]";
-            break;
-        case ' ':
-            type = TokenType::WHITESPACE;
-            text = " ";
-            isValid = false;
-            break;
-        case '\n':
-            line++;
-            column = 1;
-            i++;
-            continue;
-        default: {
-            type = TokenType::COMMENT;
-            isValid = false;
+        switch (input[index]) {
+            case ',': type = TokenType::INPUT; break;
+            case '.': type = TokenType::OUTPUT; break;
+            case '+': type = TokenType::INCREMENT; break;
+            case '-': type = TokenType::DECREMENT; break;
+            case '<': type = TokenType::MOVE_LEFT; break;
+            case '>': type = TokenType::MOVE_RIGHT; break;
+            case '[': type = TokenType::LOOP_START; break;
+            case ']': type = TokenType::LOOP_END; break;
+            case ' ':
+            case '\t':
+                is_valid = false;
+                type = TokenType::WHITESPACE;
 
-            size_t commentStart = i;
-            size_t commentCol = column;
+                break;
+            case '\n':
+                is_valid = false;
+                type = TokenType::NEWLINE;
 
-            while (i < input.length()) {
-                char ch = input[i];
+                tokens.push_back({ type, is_valid, start_line, start_column, end_line, end_column, text });
 
-                if (ch == ' ' || ch == '\n' || ch == '>' || ch == '<' || ch == '+' || ch == '-' ||
-                    ch == '.' || ch == ',' || ch == '[' || ch == ']') {
-                    break;
+                index++;
+                start_line++;
+                start_column = 1;
+
+                continue;
+            default: {
+                is_valid = false;
+                type = TokenType::COMMENT;
+
+                size_t comment_start_index = index;
+                size_t comment_start_column = start_column;
+
+                while (index < input.length()) {
+                    if (strchr(" \t\n\r><+-.,[]", input[index]) != nullptr) {
+                        break;
+                    }
+
+                    index++;
+                    start_column++;
                 }
 
-                i++;
-                column++;
+                text = input.substr(comment_start_index, index - comment_start_index);
+                tokens.push_back({ type, is_valid, start_line, comment_start_column, start_line, start_column - 1, text });
+
+                continue;
             }
-
-            text = input.substr(commentStart, i - commentStart);
-            tokens.push_back({type, isValid, commentStart, line, commentCol, text});
-
-            continue;
-        }
         }
 
-        tokens.push_back({type, isValid, startPos, line, startColumn, text});
-        i++;
-        column++;
+        tokens.push_back({ type, is_valid, start_line, start_column, end_line, start_column, text });
+
+        index++;
+        start_column++;
     }
 
     return tokens;

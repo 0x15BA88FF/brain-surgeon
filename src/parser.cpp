@@ -1,203 +1,210 @@
 #include "parser.hpp"
-#include "lexer.hpp"
 #include <iostream>
+#include <sstream>
 
-std::unique_ptr<ProgramNode> BrainfuckParser::parse(const std::vector<Token> &tokenList) {
+std::unique_ptr<ProgramNode> BrainfuckParser::parse(const std::vector<Token>& token_list) {
     current = 0;
-    errors.clear();
-    warnings.clear();
-    tokens = tokenList;
+    tokens = token_list;
 
     auto program = std::make_unique<ProgramNode>();
-    Token *prevValidToken = nullptr;
-    size_t prevValidIndex = 0;
 
     while (current < tokens.size()) {
-        auto stmt = parseStatement(prevValidToken, prevValidIndex);
+        auto stmt = parse_statement();
 
         if (stmt) {
             program->statements.push_back(std::move(stmt));
         }
     }
 
+    program->update_end_position();
     return program;
 }
 
-std::unique_ptr<ASTNode> BrainfuckParser::parseStatement(Token *&prevValidToken,
-                                                         size_t &prevValidIndex) {
+std::unique_ptr<ASTNode> BrainfuckParser::parse_statement() {
     if (current >= tokens.size()) {
         return nullptr;
     }
 
-    const Token &token = tokens[current];
+    const Token& token = tokens[current];
 
-    if (token.type == TokenType::WHITESPACE) {
-        current++;
-        return std::make_unique<WhitespaceNode>(token.text, token.line, token.column);
-    } else if (token.type == TokenType::COMMENT) {
-        current++;
-        return std::make_unique<CommentNode>(token.text, token.line, token.column);
-    } else if (token.type == TokenType::LOOP_START) {
-        return parseLoop();
-    } else if (token.type == TokenType::LOOP_END) {
-        errors.push_back({"Unmatched ']' - missing '['", token.line, token.column});
-        current++;
-        return nullptr;
-    } else {
-        if (token.isValid) {
-            if (prevValidToken) {
-                auto isCanceling = [](TokenType prev, TokenType curr) {
-                    return (prev == TokenType::MOVE_LEFT && curr == TokenType::MOVE_RIGHT) ||
-                           (prev == TokenType::MOVE_RIGHT && curr == TokenType::MOVE_LEFT) ||
-                           (prev == TokenType::INCREMENT && curr == TokenType::DECREMENT) ||
-                           (prev == TokenType::DECREMENT && curr == TokenType::INCREMENT);
-                };
+    switch (token.type) {
+        case TokenType::WHITESPACE:
+        case TokenType::NEWLINE: return parse_whitespace_sequence();
+        case TokenType::COMMENT: return parse_comment_sequence();
+        case TokenType::LOOP_START: return parse_loop();
+        case TokenType::LOOP_END: {
+            auto unmatched = std::make_unique<UnmatchedCloseNode>(token.start_line, token.start_column, token.end_line, token.end_column);
+            current++;
 
-                if (isCanceling(prevValidToken->type, token.type)) {
-                    warnings.push_back(
-                        {"Consecutive canceling commands", token.line, token.column});
-                }
-
-                // Check for comment between prevValidToken and current
-                for (size_t i = prevValidIndex + 1; i < current; ++i) {
-                    if (tokens[i].type == TokenType::COMMENT && tokens[i].line == token.line) {
-                        warnings.push_back(
-                            {"Comment between commands", tokens[i].line, tokens[i].column});
-                    }
-                }
-            }
-
-            prevValidToken = &tokens[current];
-            prevValidIndex = current;
+            return unmatched;
         }
 
-        current++;
-        return std::make_unique<CommandNode>(token.type, token.line, token.column);
+        default:
+            auto cmd = std::make_unique<CommandNode>(token.type, token.start_line, token.start_column, token.end_line, token.end_column);
+            current++;
+
+            return cmd;
     }
 }
 
-std::unique_ptr<LoopNode> BrainfuckParser::parseLoop() {
+std::unique_ptr<LoopNode> BrainfuckParser::parse_loop() {
     if (current >= tokens.size() || tokens[current].type != TokenType::LOOP_START) {
-        errors.push_back({"Expected '[' at start of loop",
-                          current < tokens.size() ? tokens[current].line : 0,
-                          current < tokens.size() ? tokens[current].column : 0});
         return nullptr;
     }
 
-    const Token &startToken = tokens[current];
-    current++; // consume '['
+    const Token& start_token = tokens[current];
+    current++;
 
-    auto loop = std::make_unique<LoopNode>(startToken.line, startToken.column);
-    Token *prevValidToken = nullptr;
-    size_t prevValidIndex = 0;
+    auto loop = std::make_unique<LoopNode>(start_token.start_line, start_token.start_column, start_token.end_line, start_token.end_column);
 
     while (current < tokens.size() && tokens[current].type != TokenType::LOOP_END) {
-        auto stmt = parseStatement(prevValidToken, prevValidIndex);
+        auto stmt = parse_statement();
 
         if (stmt) {
             loop->body.push_back(std::move(stmt));
         }
     }
 
-    if (current >= tokens.size()) {
-        errors.push_back({"Unmatched '[' - missing ']'", startToken.line, startToken.column});
-    } else {
-        current++; // consume ']'
+    if (current < tokens.size() && tokens[current].type == TokenType::LOOP_END) {
+        const Token& end_token = tokens[current];
+        loop->update_end_position(end_token.end_line, end_token.end_column);
+        current++;
     }
 
-    // Only count valid command nodes
-    size_t validCount = 0;
-    TokenType singleCommand = TokenType::WHITESPACE;
-
-    for (const auto &stmt : loop->body) {
-        if (stmt->type == NodeType::COMMAND) {
-            validCount++;
-            singleCommand = static_cast<CommandNode *>(stmt.get())->command;
-        }
-    }
-
-    if (validCount == 0) {
-        warnings.push_back({"Empty loop (potential infinite loop)", loop->line, loop->column});
-    } else if (validCount == 1) {
-        if (singleCommand == TokenType::INCREMENT) {
-            warnings.push_back({"Infinite loop with single +", loop->line, loop->column});
-        } else if (singleCommand == TokenType::DECREMENT) {
-            warnings.push_back({"Suspicious decrement loop", loop->line, loop->column});
-        } else if (singleCommand == TokenType::MOVE_LEFT ||
-                   singleCommand == TokenType::MOVE_RIGHT) {
-            warnings.push_back({"Suspicious movement loop", loop->line, loop->column});
-        }
-    }
+    loop->analyze_content();
 
     return loop;
 }
 
-void BrainfuckParser::printAST(const ASTNode *node, int indent) const {
-    if (!node)
-        return;
+std::unique_ptr<WhitespaceNode> BrainfuckParser::parse_whitespace_sequence() {
+    if (current >= tokens.size()) {
+        return nullptr;
+    }
 
-    std::string indentStr(indent * 4, ' ');
+    const Token& first_token = tokens[current];
+    std::string combined_text;
+
+    while (current < tokens.size() && (tokens[current].type == TokenType::WHITESPACE || tokens[current].type == TokenType::NEWLINE)) {
+        combined_text += tokens[current].text;
+        current++;
+    }
+
+    const Token& last_token = tokens[current - 1];
+
+    return std::make_unique<WhitespaceNode>(combined_text, first_token.start_line, first_token.start_column, last_token.end_line, last_token.end_column);
+}
+
+std::unique_ptr<CommentNode> BrainfuckParser::parse_comment_sequence() {
+    if (current >= tokens.size() || tokens[current].type != TokenType::COMMENT) {
+        return nullptr;
+    }
+
+    const Token& first_token = tokens[current];
+    std::string combined_text;
+    size_t current_line = first_token.start_line;
+
+    while (current < tokens.size() && tokens[current].type == TokenType::COMMENT && tokens[current].start_line == current_line) {
+        combined_text += tokens[current].text;
+        current++;
+    }
+
+    const Token& last_token = tokens[current - 1];
+
+    return std::make_unique<CommentNode>(combined_text, first_token.start_line, first_token.start_column, last_token.end_line, last_token.end_column);
+}
+
+std::string tree_to_string(const ASTNode* node, int indent) {
+    if (node == nullptr) {
+        return "";
+    }
+
+    std::stringstream ss;
+    std::string indent_str(indent * 4, ' ');
 
     switch (node->type) {
-    case NodeType::PROGRAM: {
-        std::cout << indentStr << "Program\n";
-
-        const auto *program = static_cast<const ProgramNode *>(node);
-
-        for (const auto &stmt : program->statements) {
-            printAST(stmt.get(), indent + 1);
+        case NodeType::PROGRAM: {
+            ss << indent_str << "Program";
+            if (node->end_line > 0) {
+                ss << " [1:1 - " << node->end_line << ":" << node->end_column << "]";
+            }
+            ss << "\n";
+            const auto* program = static_cast<const ProgramNode*>(node);
+            for (const auto& stmt: program->statements) {
+                ss << tree_to_string(stmt.get(), indent + 1);
+            }
+            break;
         }
-        break;
-    }
-    case NodeType::COMMAND: {
-        const auto *cmd = static_cast<const CommandNode *>(node);
-        const char *cmdNames[] = {"MOVE_RIGHT", "MOVE_LEFT", "INCREMENT",  "DECREMENT",
-                                  "OUTPUT",     "INPUT",     "LOOP_START", "LOOP_END"};
-
-        std::cout << indentStr << "Command: " << cmdNames[static_cast<int>(cmd->command)] << " ["
-                  << cmd->line << ":" << cmd->column << "]\n";
-        break;
-    }
-    case NodeType::LOOP: {
-        std::cout << indentStr << "Loop [" << node->line << ":" << node->column << "]\n";
-
-        const auto *loop = static_cast<const LoopNode *>(node);
-
-        for (const auto &stmt : loop->body) {
-            printAST(stmt.get(), indent + 1);
+        case NodeType::COMMAND: {
+            const auto* cmd = static_cast<const CommandNode*>(node);
+            const char* cmd_names[] = { "MOVE_RIGHT", "MOVE_LEFT", "INCREMENT", "DECREMENT", "OUTPUT", "INPUT", "LOOP_START", "LOOP_END", "WHITESPACE", "NEWLINE", "COMMENT" };
+            int cmd_index = static_cast<int>(cmd->command);
+            const char* cmd_name = (cmd_index >= 0 && cmd_index < 11) ? cmd_names[cmd_index] : "UNKNOWN";
+            ss << indent_str << "Command: " << cmd_name << " [" << cmd->start_line << ":" << cmd->start_column << "]\n";
+            break;
         }
-
-        break;
+        case NodeType::LOOP: {
+            const auto* loop = static_cast<const LoopNode*>(node);
+            ss << indent_str << "Loop [" << node->start_line << ":" << node->start_column;
+            if (node->end_line != node->start_line || node->end_column != node->start_column) {
+                ss << " - " << node->end_line << ":" << node->end_column;
+            }
+            std::vector<std::string> issues;
+            if (!loop->is_terminated) {
+                issues.push_back("UNTERMINATED");
+            }
+            if (loop->is_empty) {
+                issues.push_back("EMPTY");
+            }
+            if (loop->has_single_statement) {
+                issues.push_back("SINGLE_STATEMENT");
+            }
+            if (!issues.empty()) {
+                ss << " - ";
+                for (size_t i = 0; i < issues.size(); ++i) {
+                    if (i > 0) {
+                        ss << ", ";
+                    }
+                    ss << issues[i];
+                }
+            }
+            ss << "]\n";
+            for (const auto& stmt: loop->body) {
+                ss << tree_to_string(stmt.get(), indent + 1);
+            }
+            break;
+        }
+        case NodeType::WHITESPACE: {
+            const auto* ws = static_cast<const WhitespaceNode*>(node);
+            std::string escaped_text = ws->text;
+            size_t pos = 0;
+            while ((pos = escaped_text.find('\n', pos)) != std::string::npos) {
+                escaped_text.replace(pos, 1, "\\n");
+                pos += 2;
+            }
+            while ((pos = escaped_text.find('\t', pos)) != std::string::npos) {
+                escaped_text.replace(pos, 1, "\\t");
+                pos += 2;
+            }
+            ss << indent_str << "Whitespace \"" << escaped_text << "\" [" << ws->start_line << ":" << ws->start_column << " - " << ws->end_line << ":" << ws->end_column << "]\n";
+            break;
+        }
+        case NodeType::COMMENT: {
+            const auto* comment = static_cast<const CommentNode*>(node);
+            ss << indent_str << "Comment \"" << comment->text << "\" [" << comment->start_line << ":" << comment->start_column << " - " << comment->end_line << ":" << comment->end_column << "]\n";
+            break;
+        }
+        case NodeType::UNMATCHED_CLOSE: {
+            ss << indent_str << "UnmatchedClose ']' [" << node->start_line << ":" << node->start_column << "]\n";
+            break;
+        }
     }
-    case NodeType::WHITESPACE: {
-        const auto *ws = static_cast<const WhitespaceNode *>(node);
 
-        std::cout << indentStr << "Whitespace \"" << ws->text << "\" [" << ws->line << ":"
-                  << ws->column << "]\n";
-
-        break;
-    }
-    case NodeType::COMMENT: {
-        const auto *com = static_cast<const CommentNode *>(node);
-
-        std::cout << indentStr << "Comment \"" << com->text << "\" [" << com->line << ":"
-                  << com->column << "]\n";
-
-        break;
-    }
-    }
+    return ss.str();
 }
 
-void BrainfuckParser::printWarnings() const {
-    for (const auto &warning : warnings) {
-        std::cout << "Warning at " << warning.line << ":" << warning.column << " - "
-                  << warning.message << "\n";
-    }
-}
+std::string BrainfuckParser::get_token_name(TokenType type) const {
+    const char* cmd_names[] = { "MOVE_RIGHT", "MOVE_LEFT", "INCREMENT", "DECREMENT", "OUTPUT", "INPUT", "LOOP_START", "LOOP_END", "WHITESPACE", "NEWLINE", "COMMENT" };
 
-void BrainfuckParser::printErrors() const {
-    for (const auto &error : errors) {
-        std::cout << "Error at " << error.line << ":" << error.column << " - " << error.message
-                  << "\n";
-    }
+    int cmd_index = static_cast<int>(type);
+    return (cmd_index >= 0 && cmd_index < 11) ? cmd_names[cmd_index] : "UNKNOWN";
 }
