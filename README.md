@@ -91,7 +91,7 @@ brain-surgeon [options] <file.bf>
 **Options:**
 
 * `lint`     — Lint the Brainfuck code
-* `format`   — Format the code and output to stdout
+* `fmt`   — Format the code and output to stdout
 
 ---
 
