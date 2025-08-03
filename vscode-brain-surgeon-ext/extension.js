@@ -4,7 +4,7 @@ const { exec } = require("child_process");
 const runLint = (document, collection) => {
     if (document.languageId !== "brainfuck") return;
 
-    exec(`/home/null/Dev/hosts/github.com/0x15ba88ff/brain-surgery/build/brain-surgeon lint ${document.uri.fsPath}`, (err, stdout, stderr) => {
+    exec(`brain-surgeon lint ${document.uri.fsPath}`, (err, stdout, stderr) => {
         console.log("Brain Surgeon linting");
 
         const diagnostics = [];
@@ -45,7 +45,7 @@ const runLint = (document, collection) => {
 const runFormat = (document) => {
     if (document.languageId !== "brainfuck") return;
 
-    exec(`/home/null/Dev/hosts/github.com/0x15ba88ff/brain-surgery/build/brain-surgeon fmt ${document.uri.fsPath}`, (_err, stdout, _stderr) => {
+    exec(`brain-surgeon fmt ${document.uri.fsPath}`, (_err, stdout, _stderr) => {
         vscode.window.showInformationMessage(stdout);
     });
 };
